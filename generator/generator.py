@@ -1,13 +1,12 @@
-### Almost all code by https://github.com/Vsevolod-pl
-
-
 import cv2
 import json
 import argparse
 import treepoem
 import numpy as np
 from matplotlib import pyplot as plt
-from typing import Optional
+
+from data_generator import gens, dims
+from augmentations import augs
 
 
 def load_json(fname, *args, **kwargs):
@@ -52,14 +51,14 @@ def generate_perspective_distort(img, alpha=0.1, beta=0.01):
     M[:-1,-1] = -np.min(coords, axis=-1)
     return M
 
-def generate_aligned_perspective_distort(img, distribution, **distribution_params):
+def generate_aligned_perspective_distort(img, scale=0.1):
     xps = [0, 0, 1, 1]
     yps = [1, 0, 0, 1]
     height, width, _ = img.shape
     corners = np.array([[x*width, y*height] for x, y in zip(xps, yps)])
     corners_old = corners.copy()
 
-    dx, dy = distribution(**distribution_params, size=corners.shape).T # np.random.exponential(scale=width*scale, size=corners.shape).T
+    dx, dy = np.random.exponential(scale=width*scale, size=corners.shape).T
 
     corners[0,0] -= dx[0]
     corners[0,1] += dy[0]
@@ -133,19 +132,21 @@ def export(img, name, coords, dimensions):
     save_json(res, f'{name}.json')
 
 
-def generate_distorted(barcode_types, content_barcodes, source_img=None, distortions=None, opt_params: Optional[dict] = None):
-    assert isinstance(opt_params, dict), 'Empty optmization space'
-    barimgs = [treepoem.generate_barcode(typ, content) for typ, content in zip(barcode_types, content_barcodes)]
+def generate_distorted(barcode_types, content_barcodes, source_img=None, augms=[], distortions=None):
+    # barimgs = [treepoem.generate_barcode(typ, content) for typ, content in zip(barcode_types, content_barcodes)]
+    barimgs = [np.array(treepoem.generate_barcode(typ, content)) for typ, content in zip(barcode_types, content_barcodes)]
+    for aug_name in augms:
+        barimgs = [augs[aug_name](img) for img in barimgs]
     if distortions is None:
-        distribution = opt_params['distribution']
-        distribution_params = opt_params['distribution_params']
-        distortions = [generate_aligned_perspective_distort(np.array(img), distribution, **distribution_params) for img in barimgs]
+        distortions = [generate_aligned_perspective_distort(np.array(img)) for img in barimgs]
+    # imgs, coords = zip(*[aligned_affine(np.array(img), dis) for img, dis in zip(barimgs, distortions)])
     imgs, coords = zip(*[aligned_perspective(np.array(img), dis) for img, dis in zip(barimgs, distortions)])
+    # masks, _ = zip(*[aligned_affine(np.ones_like(img), dis) for img, dis in zip(barimgs, distortions)])
     masks, _ = zip(*[aligned_perspective(np.ones_like(img), dis) for img, dis in zip(barimgs, distortions)])
     
     if source_img is None:
         width, height, _ = np.max([img.shape for img in imgs], axis=0)*len(imgs)//3
-        combined = np.full((width, height, 3), fill_value=np.mean([np.mean(b) for b in barimags]), dtype=imgs[0].dtype)
+        combined = np.zeros((width, height, 3), dtype=imgs[0].dtype)
     else:
         combined = plt.imread(source_img)[:,:,:3]
         width, height, _ = combined.shape
@@ -163,10 +164,7 @@ def generate_distorted(barcode_types, content_barcodes, source_img=None, distort
         expanded_mask = np.zeros_like(combined)
         expanded_mask[dw:w+dw, dh:h+dh] = masks[i]
         combined = combined*(1-expanded_mask) + expanded_img
-    return combined, coords, barimgs
-    
-
-
+    return combined, coords
 
 
 if __name__ == '__main__':
@@ -180,8 +178,13 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     conf = load_json(args.config)
-    img, coords = generate_distorted(conf['barcode_types'], conf['barcode_contents'], conf['source_img'])
-    export(img, conf['name'], coords, conf['barcode_dimensions'])
+    contents = conf.get('barcode_contents', None)
+    if contents is None:
+        contents = [gens[bar_type]() for bar_type in conf['barcode_types']]
+    img, coords = generate_distorted(conf['barcode_types'], contents, conf['source_img'],
+                                     augms=conf.get('augmentations', []))
+    dimensions = [dims[bar_type] for bar_type in conf['barcode_types']]
+    export(img, conf['name'], coords, dimensions)
 
     # barimg = treepoem.generate_barcode(args.barcode_type, args.content_barcode)
     # img, coords = aligned_affine(np.array(barimg), np.random.randn(2, 3))

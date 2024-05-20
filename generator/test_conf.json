@@ -3,5 +3,6 @@
 	"barcode_types": ["ean13", "azteccode", "aztecrune", "qrcode", "code93", "microqrcode", "datamatrix"],
 	"barcode_contents": ["100000011111", "1", "110", "1", "1", "1", "1"],
 	"barcode_dimensions": ["1d", "1d", "1d", "1d", "1d", "1d", "1d"],
-	"source_img": "./example.jpg"
+	"source_img": "./example.jpg",
+	"augmentations": ["Folding", "BadPhotoCopy", "LightingGradient"]
 }

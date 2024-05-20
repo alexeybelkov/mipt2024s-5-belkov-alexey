@@ -1,0 +1,8 @@
+# Datasets
+barcode-and-qr
+barcode-detection-annotated-dataset
+ideal-barcode-mask-alignment
+ru-goods-barcodes
+*zip
+
+__pycache__
